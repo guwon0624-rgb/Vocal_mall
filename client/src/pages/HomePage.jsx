@@ -68,7 +68,11 @@ function HomePage({ onNavigate }) {
           <HomeHero onNavigate={onNavigate} showAuthActions={isGuest} />
         </div>
       </section>
-      <CommerceShowcase onNavigate={onNavigate} />
+      <CommerceShowcase
+        cartCount={cartCount}
+        onCartChange={setCartCount}
+        onNavigate={onNavigate}
+      />
     </main>
   )
 }

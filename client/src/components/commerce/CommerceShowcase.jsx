@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { addCartItem } from '../../services/cartService'
 import { getCatalogItems } from '../../services/catalogService'
 import AcademyStory from '../home/AcademyStory'
 
@@ -9,7 +10,7 @@ const formatPrice = (price) =>
     maximumFractionDigits: 0,
   }).format(price)
 
-function CatalogCard({ item, index, onAdd, onOpen }) {
+function CatalogCard({ item, index, isAdding, onAdd, onOpen }) {
   const isCourse = item.kind === 'course'
   const metadata = isCourse
     ? [item.instructor, item.duration, item.level].filter(Boolean)
@@ -45,8 +46,18 @@ function CatalogCard({ item, index, onAdd, onOpen }) {
         <p className="catalog-card__description">{item.description}</p>
         <div className="catalog-card__purchase">
           <strong>{formatPrice(item.price)}</strong>
-          <button type="button" onClick={() => onAdd(item)}>
-            {isCourse ? '수강 신청' : '장바구니'}
+          <button
+            type="button"
+            disabled={!isCourse && (isAdding || item.stock <= 0)}
+            onClick={() => onAdd(item)}
+          >
+            {isCourse
+              ? '수강 신청'
+              : isAdding
+                ? '담는 중'
+                : item.stock > 0
+                  ? '장바구니'
+                  : '품절'}
             <span aria-hidden="true">↗</span>
           </button>
         </div>
@@ -67,14 +78,31 @@ const visibleCountFor = (width) => {
   return 3
 }
 
-function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
+function CatalogCarousel({
+  items,
+  emptyMessage,
+  label,
+  pendingId,
+  onAdd,
+  onOpen,
+}) {
   const viewportRef = useRef(null)
   const trackRef = useRef(null)
+  const isAnimatingRef = useRef(false)
+  const visibleCountRef = useRef(3)
   const [index, setIndex] = useState(0)
   const [visibleCount, setVisibleCount] = useState(3)
   const [offset, setOffset] = useState(0)
-  const maxIndex = Math.max(items.length - visibleCount, 0)
-  const safeIndex = Math.min(index, maxIndex)
+  const [transitionEnabled, setTransitionEnabled] = useState(false)
+  const canSlide = items.length > visibleCount
+  const cloneCount = canSlide ? Math.min(visibleCount, items.length) : 0
+  const renderedItems = canSlide
+    ? [
+        ...items.slice(-cloneCount),
+        ...items,
+        ...items.slice(0, cloneCount),
+      ]
+    : items
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -84,7 +112,17 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
     }
 
     const update = () => {
-      setVisibleCount(visibleCountFor(viewport.clientWidth))
+      const nextVisibleCount = visibleCountFor(viewport.clientWidth)
+
+      if (nextVisibleCount === visibleCountRef.current) {
+        return
+      }
+
+      visibleCountRef.current = nextVisibleCount
+      isAnimatingRef.current = false
+      setTransitionEnabled(false)
+      setIndex(0)
+      setVisibleCount(nextVisibleCount)
     }
 
     update()
@@ -93,10 +131,6 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
 
     return () => observer.disconnect()
   }, [items.length])
-
-  useEffect(() => {
-    setIndex((current) => Math.min(current, maxIndex))
-  }, [maxIndex])
 
   useLayoutEffect(() => {
     const track = trackRef.current
@@ -109,8 +143,49 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
 
     const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 0
     const step = card.getBoundingClientRect().width + gap
-    setOffset(safeIndex * step)
-  }, [items.length, safeIndex, visibleCount])
+    setOffset((index + cloneCount) * step)
+
+    if (!transitionEnabled) {
+      const frame = window.requestAnimationFrame(() => {
+        setTransitionEnabled(true)
+      })
+
+      return () => window.cancelAnimationFrame(frame)
+    }
+
+    return undefined
+  }, [
+    cloneCount,
+    index,
+    items.length,
+    transitionEnabled,
+    visibleCount,
+  ])
+
+  const handleTransitionEnd = (event) => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+
+    isAnimatingRef.current = false
+
+    if (!canSlide || (index >= 0 && index < items.length)) {
+      return
+    }
+
+    setTransitionEnabled(false)
+    setIndex(index >= items.length ? 0 : items.length - 1)
+  }
+
+  const move = (direction) => {
+    if (!canSlide || isAnimatingRef.current) {
+      return
+    }
+
+    isAnimatingRef.current = true
+    setTransitionEnabled(true)
+    setIndex((current) => current + direction)
+  }
 
   if (!items.length) {
     return <p className="catalog-empty">{emptyMessage}</p>
@@ -122,8 +197,8 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
         className="catalog-slider__arrow catalog-slider__arrow--prev"
         type="button"
         aria-label={`이전 ${label}`}
-        disabled={safeIndex === 0}
-        onClick={() => setIndex((current) => Math.max(current - 1, 0))}
+        disabled={!canSlide}
+        onClick={() => move(-1)}
       >
         <span aria-hidden="true">←</span>
       </button>
@@ -134,13 +209,16 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
           style={{
             '--visible': visibleCount,
             transform: `translate3d(-${offset}px, 0, 0)`,
+            transition: transitionEnabled ? undefined : 'none',
           }}
+          onTransitionEnd={handleTransitionEnd}
         >
-          {items.map((item, itemIndex) => (
+          {renderedItems.map((item, itemIndex) => (
             <CatalogCard
               item={item}
               index={itemIndex}
-              key={item._id}
+              isAdding={pendingId === item._id}
+              key={`${itemIndex}-${item._id}`}
               onAdd={onAdd}
               onOpen={onOpen}
             />
@@ -151,10 +229,8 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
         className="catalog-slider__arrow catalog-slider__arrow--next"
         type="button"
         aria-label={`다음 ${label}`}
-        disabled={safeIndex >= maxIndex}
-        onClick={() =>
-          setIndex((current) => Math.min(current + 1, maxIndex))
-        }
+        disabled={!canSlide}
+        onClick={() => move(1)}
       >
         <span aria-hidden="true">→</span>
       </button>
@@ -162,15 +238,16 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
   )
 }
 
-function CommerceShowcase({ onNavigate }) {
+function CommerceShowcase({ cartCount, onCartChange, onNavigate }) {
   const [catalog, setCatalog] = useState({
     status: 'loading',
     courses: [],
     products: [],
     message: '',
   })
-  const [cart, setCart] = useState([])
   const [notice, setNotice] = useState('')
+  const [pendingId, setPendingId] = useState('')
+  const noticeTimerRef = useRef()
 
   useEffect(() => {
     let ignore = false
@@ -230,14 +307,45 @@ function CommerceShowcase({ onNavigate }) {
     return () => observer.disconnect()
   }, [catalog.courses.length, catalog.products.length])
 
-  const handleAdd = (item) => {
-    setCart((current) => [...current, item._id])
-    setNotice(
-      item.kind === 'course'
-        ? `${item.title} 수강 상담을 선택했습니다.`
-        : `${item.title}을 장바구니에 담았습니다.`,
-    )
-    window.setTimeout(() => setNotice(''), 2400)
+  useEffect(
+    () => () => window.clearTimeout(noticeTimerRef.current),
+    [],
+  )
+
+  const showNotice = (nextNotice) => {
+    window.clearTimeout(noticeTimerRef.current)
+    setNotice(nextNotice)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(''), 2400)
+  }
+
+  const handleAdd = async (item) => {
+    if (item.kind === 'course') {
+      showNotice(`${item.title} 수강 상담을 선택했습니다.`)
+      return
+    }
+
+    const token = sessionStorage.getItem('accessToken')
+
+    if (!token) {
+      showNotice('로그인 후 장바구니에 상품을 담을 수 있습니다.')
+      return
+    }
+
+    if (pendingId || item.stock <= 0) {
+      return
+    }
+
+    setPendingId(item._id)
+
+    try {
+      const nextCart = await addCartItem(token, item._id, 1)
+      onCartChange(nextCart.totalQuantity || 0)
+      showNotice(`${item.title}을 장바구니에 담았습니다.`)
+    } catch (error) {
+      showNotice(error.message)
+    } finally {
+      setPendingId('')
+    }
   }
 
   const handleOpen = (item) => {
@@ -297,6 +405,7 @@ function CommerceShowcase({ onNavigate }) {
             items={catalog.courses}
             emptyMessage="등록된 강의가 없습니다."
             label="강의"
+            pendingId={pendingId}
             onAdd={handleAdd}
             onOpen={handleOpen}
           />
@@ -315,7 +424,7 @@ function CommerceShowcase({ onNavigate }) {
           </div>
           <div className="commerce-cart">
             <span>CART</span>
-            <strong>{cart.length.toString().padStart(2, '0')}</strong>
+            <strong>{cartCount.toString().padStart(2, '0')}</strong>
           </div>
         </div>
         {catalog.status === 'loading' ? (
@@ -327,6 +436,7 @@ function CommerceShowcase({ onNavigate }) {
             items={catalog.products}
             emptyMessage="등록된 상품이 없습니다."
             label="장비"
+            pendingId={pendingId}
             onAdd={handleAdd}
             onOpen={handleOpen}
           />
