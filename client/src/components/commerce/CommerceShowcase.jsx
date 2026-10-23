@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { getCatalogItems } from '../../services/catalogService'
+import AcademyStory from '../home/AcademyStory'
 
 const formatPrice = (price) =>
   new Intl.NumberFormat('ko-KR', {
@@ -8,14 +9,18 @@ const formatPrice = (price) =>
     maximumFractionDigits: 0,
   }).format(price)
 
-function CatalogCard({ item, onAdd, onOpen }) {
+function CatalogCard({ item, index, onAdd, onOpen }) {
   const isCourse = item.kind === 'course'
   const metadata = isCourse
     ? [item.instructor, item.duration, item.level].filter(Boolean)
     : [item.brand, `재고 ${item.stock ?? 0}개`].filter(Boolean)
 
   return (
-    <article className={`catalog-card catalog-card--${item.kind}`}>
+    <article
+      className={`catalog-card catalog-card--${item.kind}`}
+      data-scroll-reveal
+      style={{ '--reveal-delay': `${index * 90}ms` }}
+    >
       <button
         className="catalog-card__visual"
         type="button"
@@ -131,9 +136,10 @@ function CatalogCarousel({ items, emptyMessage, label, onAdd, onOpen }) {
             transform: `translate3d(-${offset}px, 0, 0)`,
           }}
         >
-          {items.map((item) => (
+          {items.map((item, itemIndex) => (
             <CatalogCard
               item={item}
+              index={itemIndex}
               key={item._id}
               onAdd={onAdd}
               onOpen={onOpen}
@@ -196,6 +202,34 @@ function CommerceShowcase({ onNavigate }) {
     }
   }, [])
 
+  useEffect(() => {
+    const elements = document.querySelectorAll('[data-scroll-reveal]')
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      elements.forEach((element) => element.classList.add('is-visible'))
+      return undefined
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible')
+            observer.unobserve(entry.target)
+          }
+        })
+      },
+      {
+        rootMargin: '0px 0px -10% 0px',
+        threshold: 0.12,
+      },
+    )
+
+    elements.forEach((element) => observer.observe(element))
+
+    return () => observer.disconnect()
+  }, [catalog.courses.length, catalog.products.length])
+
   const handleAdd = (item) => {
     setCart((current) => [...current, item._id])
     setNotice(
@@ -210,29 +244,43 @@ function CommerceShowcase({ onNavigate }) {
     onNavigate(item.kind, item._id)
   }
 
+  const handlePointerMove = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100
+
+    event.currentTarget.style.setProperty('--pointer-x', `${x}%`)
+    event.currentTarget.style.setProperty('--pointer-y', `${y}%`)
+  }
+
   return (
-    <div className="commerce-showcase">
+    <div className="commerce-showcase" onPointerMove={handlePointerMove}>
       <section className="commerce-intro" aria-labelledby="commerce-title">
-        <p className="commerce-eyebrow">LEARN · RECORD · PERFORM</p>
-        <h2 id="commerce-title">
-          목소리를 배우고,
-          <span>완성하는 모든 곳.</span>
-        </h2>
-        <p>
-          내 성종에 맞는 강의부터 연습과 녹음에 필요한 장비까지 한 공간에서
-          만나보세요.
-        </p>
-        <a href="#courses">둘러보기 <span aria-hidden="true">↓</span></a>
+        <div className="commerce-intro__orb" aria-hidden="true" />
+        <div data-scroll-reveal>
+          <p className="commerce-eyebrow">01 / LEARN · RECORD · PERFORM</p>
+          <h2 id="commerce-title">
+            목소리를 배우고,
+            <span>완성하는 모든 곳.</span>
+          </h2>
+          <p>
+            내 성종에 맞는 강의부터 연습과 녹음에 필요한 장비까지 한 공간에서
+            만나보세요.
+          </p>
+          <a href="#method">우리의 방식 <span aria-hidden="true">↓</span></a>
+        </div>
       </section>
+
+      <AcademyStory />
 
       <section
         className="commerce-section commerce-section--courses"
         id="courses"
         aria-labelledby="courses-title"
       >
-        <div className="commerce-section__heading">
+        <div className="commerce-section__heading" data-scroll-reveal>
           <div>
-            <p className="commerce-section__index">02 / CLASSES</p>
+            <p className="commerce-section__index">03 / CLASSES</p>
             <h2 id="courses-title">지금 필요한 목소리 수업</h2>
           </div>
           <p>
@@ -260,9 +308,9 @@ function CommerceShowcase({ onNavigate }) {
         id="equipment"
         aria-labelledby="products-title"
       >
-        <div className="commerce-section__heading">
+        <div className="commerce-section__heading" data-scroll-reveal>
           <div>
-            <p className="commerce-section__index">03 / EQUIPMENT</p>
+            <p className="commerce-section__index">04 / EQUIPMENT</p>
             <h2 id="products-title">좋은 소리를 위한 장비</h2>
           </div>
           <div className="commerce-cart">

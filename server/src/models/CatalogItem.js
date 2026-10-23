@@ -1,5 +1,25 @@
 const mongoose = require("mongoose");
 
+const productSpecSchema = new mongoose.Schema(
+  {
+    label: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: [40, "사양 항목명은 40자 이하여야 합니다."],
+    },
+    value: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: [160, "사양 값은 160자 이하여야 합니다."],
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 const catalogItemSchema = new mongoose.Schema(
   {
     kind: {
@@ -101,6 +121,29 @@ const catalogItemSchema = new mongoose.Schema(
       trim: true,
       maxlength: [50, "브랜드는 50자 이하여야 합니다."],
       default: "",
+    },
+    specs: {
+      type: [productSpecSchema],
+      default: [],
+    },
+    sourceUrl: {
+      type: String,
+      trim: true,
+      default: "",
+      validate: {
+        validator: (value) => {
+          if (!value) {
+            return true;
+          }
+
+          try {
+            return new URL(value).protocol === "https:";
+          } catch {
+            return false;
+          }
+        },
+        message: "상품 정보 출처는 유효한 HTTPS 주소여야 합니다.",
+      },
     },
     stock: {
       type: Number,

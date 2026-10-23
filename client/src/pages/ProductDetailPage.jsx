@@ -216,6 +216,34 @@ function ProductDetailPage({ productId, expectedKind, onNavigate }) {
                 </div>
               </dl>
 
+              {expectedKind === 'product' && state.product.specs?.length ? (
+                <section className="product-detail__details">
+                  <div className="product-detail__details-heading">
+                    <p>PRODUCT SPECIFICATIONS</p>
+                    <h2>상세 사양</h2>
+                  </div>
+                  <dl className="product-detail__specs product-detail__specs--extended">
+                    {state.product.specs.map((spec) => (
+                      <div key={`${spec.label}-${spec.value}`}>
+                        <dt>{spec.label}</dt>
+                        <dd>{spec.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {state.product.sourceUrl ? (
+                    <a
+                      className="product-detail__source"
+                      href={state.product.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      제조사 상품 정보 확인
+                      <span aria-hidden="true">↗</span>
+                    </a>
+                  ) : null}
+                </section>
+              ) : null}
+
               <div
                 className={`product-detail__purchase ${
                   expectedKind === 'course'

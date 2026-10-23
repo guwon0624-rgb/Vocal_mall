@@ -19,6 +19,8 @@ const catalogFields = [
   "duration",
   "level",
   "brand",
+  "specs",
+  "sourceUrl",
   "stock",
   "featured",
   "isPublished",
